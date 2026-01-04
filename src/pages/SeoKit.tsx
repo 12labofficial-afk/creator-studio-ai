@@ -15,6 +15,8 @@ import {
   Type
 } from "lucide-react";
 import { useState } from "react";
+import { supabase } from "@/integrations/supabase/client";
+import { useToast } from "@/hooks/use-toast";
 
 interface SEOResult {
   titles: string[];
@@ -28,69 +30,40 @@ export default function SeoKit() {
   const [topic, setTopic] = useState("");
   const [result, setResult] = useState<SEOResult | null>(null);
   const [copiedItem, setCopiedItem] = useState<string | null>(null);
+  const { toast } = useToast();
 
   const handleGenerate = async () => {
     if (!topic) return;
     
     setIsGenerating(true);
-    // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 2000));
     
-    setResult({
-      titles: [
-        `${topic} - Complete Guide 2024 🔥`,
-        `How to Master ${topic} in 10 Minutes`,
-        `${topic}: Secrets Nobody Tells You! 😱`,
-        `Why ${topic} is Trending in India | Full Explanation`,
-        `${topic} Tutorial for Beginners - Step by Step`,
-      ],
-      description: `🎯 इस video में हम ${topic} के बारे में पूरी जानकारी देंगे।
+    try {
+      const { data, error } = await supabase.functions.invoke('generate-seo', {
+        body: { topic }
+      });
 
-आप सीखेंगे:
-✅ ${topic} क्या है
-✅ कैसे शुरू करें
-✅ Pro tips और tricks
-✅ Common mistakes से कैसे बचें
-
-👇 ज़रूर देखें और SUBSCRIBE करें!
-
-#${topic.replace(/\s+/g, '')} #Hindi #Tutorial
-
-📌 Chapters:
-0:00 - Introduction
-1:30 - What is ${topic}
-5:00 - Getting Started
-10:00 - Pro Tips
-15:00 - Conclusion
-
-🔔 Don't forget to LIKE, SHARE, and SUBSCRIBE!`,
-      tags: [
-        topic.toLowerCase(),
-        `${topic} tutorial`,
-        `${topic} hindi`,
-        `${topic} 2024`,
-        `how to ${topic}`,
-        `${topic} for beginners`,
-        `${topic} tips`,
-        `${topic} guide`,
-        `learn ${topic}`,
-        `${topic} explained`,
-        "hindi tutorial",
-        "step by step",
-      ],
-      hashtags: [
-        `#${topic.replace(/\s+/g, '')}`,
-        "#Hindi",
-        "#Tutorial",
-        "#2024",
-        "#Learning",
-        "#HowTo",
-        "#India",
-        "#Viral",
-      ],
-    });
-    
-    setIsGenerating(false);
+      if (error) throw error;
+      
+      if (data?.titles) {
+        setResult(data);
+        toast({
+          title: "SEO Pack Generated! 🎯",
+          description: "Your titles, description, and tags are ready.",
+        });
+      } else if (data?.error) {
+        throw new Error(data.error);
+      }
+    } catch (error: unknown) {
+      console.error('Error generating SEO:', error);
+      const errorMessage = error instanceof Error ? error.message : 'SEO generation failed';
+      toast({
+        title: "Error",
+        description: errorMessage,
+        variant: "destructive",
+      });
+    } finally {
+      setIsGenerating(false);
+    }
   };
 
   const handleCopy = (text: string, id: string) => {

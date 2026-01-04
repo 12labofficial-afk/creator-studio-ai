@@ -19,6 +19,8 @@ import {
   Coins
 } from "lucide-react";
 import { useState } from "react";
+import { supabase } from "@/integrations/supabase/client";
+import { useToast } from "@/hooks/use-toast";
 
 const voices = [
   { id: "male-deep", name: "Arjun (Male - Deep)", language: "Hindi" },
@@ -44,22 +46,46 @@ export default function Studio() {
   const [audioGenerated, setAudioGenerated] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const [progress, setProgress] = useState(0);
+  const { toast } = useToast();
 
   const handleAnalyzeScript = async () => {
     if (!script.trim()) return;
     
     setIsAnalyzing(true);
-    // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 2000));
     
-    // Mock analysis result
-    setCharacters([
-      { name: "Narrator", dialogues: ["Opening narration...", "Scene description..."], selectedVoice: "male-narrator" },
-      { name: "Hero", dialogues: ["Main dialogue 1", "Main dialogue 2", "Main dialogue 3"], selectedVoice: "male-deep" },
-      { name: "Villain", dialogues: ["Evil dialogue 1", "Evil dialogue 2"], selectedVoice: "male-young" },
-    ]);
-    setEstimatedCost(45);
-    setIsAnalyzing(false);
+    try {
+      const { data, error } = await supabase.functions.invoke('analyze-script', {
+        body: { script }
+      });
+
+      if (error) throw error;
+      
+      if (data?.characters) {
+        const formattedCharacters = data.characters.map((char: { name: string; dialogues: string[]; suggestedVoice: string }) => ({
+          name: char.name,
+          dialogues: char.dialogues,
+          selectedVoice: char.suggestedVoice || 'male-narrator'
+        }));
+        setCharacters(formattedCharacters);
+        setEstimatedCost(data.estimatedCredits || 0);
+        toast({
+          title: "Script Analyzed! ✨",
+          description: `Found ${data.characters.length} characters.`,
+        });
+      } else if (data?.error) {
+        throw new Error(data.error);
+      }
+    } catch (error: unknown) {
+      console.error('Error analyzing script:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Analysis failed';
+      toast({
+        title: "Error",
+        description: errorMessage,
+        variant: "destructive",
+      });
+    } finally {
+      setIsAnalyzing(false);
+    }
   };
 
   const handleGenerateVoice = async () => {
