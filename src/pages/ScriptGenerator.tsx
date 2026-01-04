@@ -16,6 +16,8 @@ import {
   Wand2
 } from "lucide-react";
 import { useState } from "react";
+import { supabase } from "@/integrations/supabase/client";
+import { useToast } from "@/hooks/use-toast";
 
 const genres = [
   { value: "horror", label: "Horror / Thriller" },
@@ -45,6 +47,7 @@ const lengths = [
 export default function ScriptGenerator() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatedScript, setGeneratedScript] = useState("");
+  const { toast } = useToast();
   
   // Form state
   const [topic, setTopic] = useState("");
@@ -58,68 +61,41 @@ export default function ScriptGenerator() {
     if (!topic || !genre) return;
     
     setIsGenerating(true);
-    // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 3000));
     
-    setGeneratedScript(`SCENE 1: OPENING
+    try {
+      const { data, error } = await supabase.functions.invoke('generate-script', {
+        body: { 
+          topic, 
+          genre, 
+          tone, 
+          length, 
+          characters, 
+          additionalNotes 
+        }
+      });
 
-NARRATOR: (ominous tone)
-कहते हैं इस जंगल में कोई अकेला नहीं जाता। जो गया, वो कभी लौटा नहीं...
-
-[Dark forest ambiance, owls hooting]
-
-HERO: (determined)
-मैं जाऊंगा। मेरे भाई को बचाना है।
-
-FRIEND: (worried)
-राहुल, सोच लो। वो जगह... वहाँ कुछ है जो इंसान नहीं है।
-
-HERO: (firmly)
-तो क्या हुआ? मैं भी कोई साधारण इंसान नहीं हूं।
-
----
-
-SCENE 2: THE FOREST
-
-[Footsteps on dry leaves, wind howling]
-
-NARRATOR:
-राहुल जंगल में घुस गया। अंधेरा इतना गहरा था कि अपना हाथ भी नहीं दिखता था।
-
-HERO: (calling out)
-विकास! विकास, कहाँ हो तुम?
-
-[Distant whisper]
-
-MYSTERIOUS VOICE: (echoing)
-तुम... यहाँ क्यों आए हो?
-
-HERO: (startled)
-कौन है?
-
----
-
-SCENE 3: THE REVELATION
-
-[Thunder rumbles]
-
-VILLAIN: (menacing laugh)
-बहुत बहादुर हो तुम। अपने भाई को बचाने आए हो?
-
-HERO:
-मेरा भाई कहाँ है?
-
-VILLAIN:
-वो अब मेरा है। जैसे जल्द ही तुम भी मेरे हो जाओगे...
-
-[TO BE CONTINUED...]
-
----
-Script Length: ~500 words
-Characters: 4 (Narrator, Hero, Friend, Villain, Mysterious Voice)
-Estimated Voiceover Credits: 35`);
-    
-    setIsGenerating(false);
+      if (error) throw error;
+      
+      if (data?.script) {
+        setGeneratedScript(data.script);
+        toast({
+          title: "Script Generated! ✨",
+          description: "Your AI script is ready.",
+        });
+      } else if (data?.error) {
+        throw new Error(data.error);
+      }
+    } catch (error: unknown) {
+      console.error('Error generating script:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Script generation failed';
+      toast({
+        title: "Error",
+        description: errorMessage,
+        variant: "destructive",
+      });
+    } finally {
+      setIsGenerating(false);
+    }
   };
 
   const handleCopy = () => {
