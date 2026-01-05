@@ -12,6 +12,7 @@ import ScriptGenerator from "./pages/ScriptGenerator";
 import ThumbnailGenerator from "./pages/ThumbnailGenerator";
 import SeoKit from "./pages/SeoKit";
 import AdminDashboard from "./pages/admin/Dashboard";
+import MigrationPage from "./pages/admin/Migration";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -32,6 +33,7 @@ const App = () => (
           <Route path="/thumbnail-generator" element={<ThumbnailGenerator />} />
           <Route path="/seo-kit" element={<SeoKit />} />
           <Route path="/admin" element={<AdminDashboard />} />
+          <Route path="/admin/migration" element={<MigrationPage />} />
           <Route path="/admin/*" element={<AdminDashboard />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
