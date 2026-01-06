@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/contexts/AuthContext";
 
 const navLinks = [
   { href: "/studio", label: "Voice Studio", icon: Mic2 },
@@ -24,7 +25,12 @@ const navLinks = [
 export function Navbar() {
   const [isOpen, setIsOpen] = useState(false);
   const location = useLocation();
-  const isLoggedIn = false; // TODO: Replace with actual auth state
+  const { user, credits, signOut } = useAuth();
+
+  const handleLogout = async () => {
+    await signOut();
+    setIsOpen(false);
+  };
 
   return (
     <header className="fixed top-0 left-0 right-0 z-50 glass border-b border-border/50">
@@ -65,12 +71,12 @@ export function Navbar() {
 
           {/* Right Section */}
           <div className="hidden md:flex items-center gap-3">
-            {isLoggedIn ? (
+            {user ? (
               <>
                 <Link to="/buy-credits">
                   <Button variant="outline" size="sm" className="gap-2">
                     <Sparkles className="w-4 h-4" />
-                    <span>250 Credits</span>
+                    <span>{credits} Credits</span>
                   </Button>
                 </Link>
                 <Link to="/history">
@@ -78,6 +84,9 @@ export function Navbar() {
                     <User className="w-5 h-5" />
                   </Button>
                 </Link>
+                <Button variant="ghost" size="icon" onClick={handleLogout}>
+                  <LogOut className="w-5 h-5" />
+                </Button>
               </>
             ) : (
               <Link to="/login">
@@ -123,15 +132,21 @@ export function Navbar() {
                 );
               })}
               <div className="border-t border-border/50 pt-3 mt-2">
-                {isLoggedIn ? (
+                {user ? (
                   <>
                     <Link to="/buy-credits" onClick={() => setIsOpen(false)}>
                       <Button variant="outline" className="w-full mb-2 gap-2">
                         <Sparkles className="w-4 h-4" />
-                        250 Credits
+                        {credits} Credits
                       </Button>
                     </Link>
-                    <Button variant="ghost" className="w-full gap-2">
+                    <Link to="/history" onClick={() => setIsOpen(false)}>
+                      <Button variant="ghost" className="w-full mb-2 gap-2">
+                        <User className="w-4 h-4" />
+                        My Projects
+                      </Button>
+                    </Link>
+                    <Button variant="ghost" className="w-full gap-2" onClick={handleLogout}>
                       <LogOut className="w-4 h-4" />
                       Logout
                     </Button>
