@@ -1,13 +1,76 @@
 import { Layout } from "@/components/layout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Sparkles, Mail, ArrowRight } from "lucide-react";
-import { Link } from "react-router-dom";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Sparkles, Mail, ArrowRight, Loader2 } from "lucide-react";
+import { Link, useNavigate } from "react-router-dom";
+import { useState, useEffect } from "react";
+import { useAuth } from "@/contexts/AuthContext";
+import { toast } from "sonner";
+import { z } from "zod";
+
+const authSchema = z.object({
+  email: z.string().email("Valid email required"),
+  password: z.string().min(6, "Password must be at least 6 characters"),
+});
 
 export default function Login() {
-  const handleGoogleSignIn = () => {
-    // TODO: Implement Firebase Google Sign-In
-    console.log("Google Sign-In clicked");
+  const [isLogin, setIsLogin] = useState(true);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [loading, setLoading] = useState(false);
+  const { signIn, signUp, user } = useAuth();
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    if (user) {
+      navigate("/");
+    }
+  }, [user, navigate]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    const result = authSchema.safeParse({ email, password });
+    if (!result.success) {
+      toast.error(result.error.errors[0].message);
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      if (isLogin) {
+        const { error } = await signIn(email, password);
+        if (error) {
+          if (error.message.includes("Invalid login credentials")) {
+            toast.error("Email ya password galat hai");
+          } else {
+            toast.error(error.message);
+          }
+        } else {
+          toast.success("Login successful!");
+          navigate("/");
+        }
+      } else {
+        const { error } = await signUp(email, password);
+        if (error) {
+          if (error.message.includes("User already registered")) {
+            toast.error("Is email se account already exists. Please login.");
+          } else {
+            toast.error(error.message);
+          }
+        } else {
+          toast.success("Account created! Please login.");
+          setIsLogin(true);
+        }
+      }
+    } catch (err) {
+      toast.error("Something went wrong");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -28,60 +91,65 @@ export default function Login() {
                 </div>
               </Link>
               <h1 className="text-2xl font-display font-bold mb-2">
-                Welcome to 12Labs
+                {isLogin ? "Welcome Back" : "Create Account"}
               </h1>
               <p className="text-muted-foreground text-sm">
-                Sign in to access your AI content studio
+                {isLogin ? "Sign in to access your AI content studio" : "Sign up to get started with 12Labs"}
               </p>
             </div>
 
-            {/* Sign In Button */}
-            <Button 
-              variant="outline" 
-              className="w-full h-12 gap-3 text-base"
-              onClick={handleGoogleSignIn}
-            >
-              <svg className="w-5 h-5" viewBox="0 0 24 24">
-                <path
-                  fill="currentColor"
-                  d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+            {/* Form */}
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="email">Email</Label>
+                <Input
+                  id="email"
+                  type="email"
+                  placeholder="you@example.com"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
                 />
-                <path
-                  fill="currentColor"
-                  d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="password">Password</Label>
+                <Input
+                  id="password"
+                  type="password"
+                  placeholder="••••••••"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
                 />
-                <path
-                  fill="currentColor"
-                  d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
-                />
-                <path
-                  fill="currentColor"
-                  d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
-                />
-              </svg>
-              Continue with Google
-            </Button>
+              </div>
+              <Button type="submit" className="w-full h-12" disabled={loading}>
+                {loading ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Please wait...
+                  </>
+                ) : (
+                  <>
+                    <Mail className="w-4 h-4 mr-2" />
+                    {isLogin ? "Sign In" : "Create Account"}
+                  </>
+                )}
+              </Button>
+            </form>
 
-            {/* Divider */}
-            <div className="relative my-6">
-              <div className="absolute inset-0 flex items-center">
-                <div className="w-full border-t border-border"></div>
-              </div>
-              <div className="relative flex justify-center text-xs uppercase">
-                <span className="bg-card px-2 text-muted-foreground">or</span>
-              </div>
+            {/* Toggle */}
+            <div className="text-center mt-6">
+              <button
+                type="button"
+                onClick={() => setIsLogin(!isLogin)}
+                className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+              >
+                {isLogin ? "Don't have an account? " : "Already have an account? "}
+                <span className="text-primary font-medium">
+                  {isLogin ? "Sign Up" : "Sign In"}
+                </span>
+              </button>
             </div>
-
-            {/* Email Option (for future) */}
-            <Button 
-              variant="secondary" 
-              className="w-full h-12 gap-3 text-base"
-              disabled
-            >
-              <Mail className="w-5 h-5" />
-              Continue with Email
-              <span className="text-xs text-muted-foreground">(Coming Soon)</span>
-            </Button>
 
             {/* Terms */}
             <p className="text-xs text-muted-foreground text-center mt-6">

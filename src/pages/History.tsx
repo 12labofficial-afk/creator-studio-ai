@@ -14,7 +14,8 @@ import {
   Image,
   Calendar,
   MoreVertical,
-  Filter
+  Filter,
+  Loader2
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -22,72 +23,91 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
+import { toast } from "sonner";
 
-const mockProjects = [
-  {
-    id: 1,
-    name: "Horror Story Episode 1",
-    type: "voiceover",
-    date: "2024-01-15",
-    duration: "5:32",
-    credits: 45,
-    status: "completed",
-  },
-  {
-    id: 2,
-    name: "Product Review Script",
-    type: "script",
-    date: "2024-01-14",
-    words: 850,
-    credits: 15,
-    status: "completed",
-  },
-  {
-    id: 3,
-    name: "Gaming Thumbnail",
-    type: "thumbnail",
-    date: "2024-01-13",
-    credits: 10,
-    status: "completed",
-  },
-  {
-    id: 4,
-    name: "Motivational Story",
-    type: "voiceover",
-    date: "2024-01-12",
-    duration: "3:45",
-    credits: 30,
-    status: "completed",
-  },
-  {
-    id: 5,
-    name: "Comedy Sketch Script",
-    type: "script",
-    date: "2024-01-11",
-    words: 1200,
-    credits: 20,
-    status: "completed",
-  },
-];
+interface Project {
+  id: string;
+  name: string;
+  type: string;
+  created_at: string;
+  status: string | null;
+  content: unknown;
+}
 
-const typeIcons = {
+const typeIcons: Record<string, typeof Mic2> = {
   voiceover: Mic2,
   script: FileText,
   thumbnail: Image,
+  seo: FileText,
 };
 
-const typeColors = {
+const typeColors: Record<string, string> = {
   voiceover: "bg-blue-500/10 text-blue-500",
   script: "bg-purple-500/10 text-purple-500",
   thumbnail: "bg-orange-500/10 text-orange-500",
+  seo: "bg-green-500/10 text-green-500",
 };
 
 export default function HistoryPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [filterType, setFilterType] = useState<string | null>(null);
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [loading, setLoading] = useState(true);
+  const { user } = useAuth();
 
-  const filteredProjects = mockProjects.filter((project) => {
+  useEffect(() => {
+    if (user) {
+      fetchProjects();
+    }
+  }, [user]);
+
+  const fetchProjects = async () => {
+    if (!user) return;
+
+    setLoading(true);
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('id')
+      .eq('user_id', user.id)
+      .maybeSingle();
+
+    if (!profile) {
+      setLoading(false);
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from('projects')
+      .select('*')
+      .eq('user_id', profile.id)
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      toast.error("Failed to load projects");
+    } else {
+      setProjects(data || []);
+    }
+    setLoading(false);
+  };
+
+  const handleDelete = async (projectId: string) => {
+    const { error } = await supabase
+      .from('projects')
+      .delete()
+      .eq('id', projectId);
+
+    if (error) {
+      toast.error("Failed to delete project");
+    } else {
+      toast.success("Project deleted");
+      setProjects(projects.filter(p => p.id !== projectId));
+    }
+  };
+
+  const filteredProjects = projects.filter((project) => {
     const matchesSearch = project.name.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesFilter = !filterType || project.type === filterType;
     return matchesSearch && matchesFilter;
@@ -138,6 +158,9 @@ export default function HistoryPage() {
                 <DropdownMenuItem onClick={() => setFilterType("thumbnail")}>
                   Thumbnails
                 </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setFilterType("seo")}>
+                  SEO
+                </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
@@ -146,10 +169,10 @@ export default function HistoryPage() {
         {/* Stats */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
           {[
-            { label: "Total Projects", value: mockProjects.length },
-            { label: "Voiceovers", value: mockProjects.filter(p => p.type === "voiceover").length },
-            { label: "Scripts", value: mockProjects.filter(p => p.type === "script").length },
-            { label: "Credits Used", value: mockProjects.reduce((acc, p) => acc + p.credits, 0) },
+            { label: "Total Projects", value: projects.length },
+            { label: "Voiceovers", value: projects.filter(p => p.type === "voiceover").length },
+            { label: "Scripts", value: projects.filter(p => p.type === "script").length },
+            { label: "Thumbnails", value: projects.filter(p => p.type === "thumbnail").length },
           ].map((stat) => (
             <Card key={stat.label} className="border-border/50">
               <CardContent className="p-4 text-center">
@@ -160,12 +183,16 @@ export default function HistoryPage() {
           ))}
         </div>
 
-        {/* Projects Grid */}
-        {filteredProjects.length > 0 ? (
+        {/* Loading */}
+        {loading ? (
+          <div className="flex items-center justify-center py-16">
+            <Loader2 className="w-8 h-8 animate-spin text-primary" />
+          </div>
+        ) : filteredProjects.length > 0 ? (
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
             {filteredProjects.map((project) => {
-              const Icon = typeIcons[project.type as keyof typeof typeIcons];
-              const colorClass = typeColors[project.type as keyof typeof typeColors];
+              const Icon = typeIcons[project.type] || FileText;
+              const colorClass = typeColors[project.type] || "bg-muted text-muted-foreground";
               
               return (
                 <Card key={project.id} className="border-border/50 hover:border-primary/50 transition-colors group">
@@ -185,7 +212,10 @@ export default function HistoryPage() {
                             <Download className="w-4 h-4" />
                             Download
                           </DropdownMenuItem>
-                          <DropdownMenuItem className="gap-2 text-destructive">
+                          <DropdownMenuItem 
+                            className="gap-2 text-destructive"
+                            onClick={() => handleDelete(project.id)}
+                          >
                             <Trash2 className="w-4 h-4" />
                             Delete
                           </DropdownMenuItem>
@@ -197,7 +227,7 @@ export default function HistoryPage() {
                     
                     <div className="flex items-center gap-2 text-sm text-muted-foreground mb-4">
                       <Calendar className="w-4 h-4" />
-                      {new Date(project.date).toLocaleDateString('en-IN', { 
+                      {new Date(project.created_at).toLocaleDateString('en-IN', { 
                         day: 'numeric',
                         month: 'short',
                         year: 'numeric'
@@ -208,12 +238,9 @@ export default function HistoryPage() {
                       <Badge variant="secondary" className="capitalize">
                         {project.type}
                       </Badge>
-                      {project.type === "voiceover" && (
-                        <span className="text-sm text-muted-foreground">{project.duration}</span>
-                      )}
-                      {project.type === "script" && (
-                        <span className="text-sm text-muted-foreground">{project.words} words</span>
-                      )}
+                      <Badge variant="outline" className="capitalize">
+                        {project.status}
+                      </Badge>
                     </div>
 
                     {project.type === "voiceover" && (
