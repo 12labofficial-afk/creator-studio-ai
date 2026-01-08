@@ -7,18 +7,69 @@ const corsHeaders = {
 };
 
 // Firebase Admin SDK initialization
+
+type FirebaseServiceAccount = {
+  project_id: string;
+  client_email: string;
+  private_key: string;
+};
+
+function stripOuterQuotes(value: string) {
+  const v = value.trim();
+  if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) {
+    return v.slice(1, -1);
+  }
+  return v;
+}
+
+function previewForError(value: string) {
+  return value.trim().slice(0, 24).replace(/\s+/g, " ");
+}
+
+function tryParseServiceAccount(rawValue: string): FirebaseServiceAccount {
+  const raw = stripOuterQuotes(rawValue);
+
+  // 1) Plain JSON
+  try {
+    const parsed = JSON.parse(raw);
+    return parsed as FirebaseServiceAccount;
+  } catch {
+    // ignore
+  }
+
+  // 2) Base64(JSON)
+  try {
+    const decoded = atob(raw.trim());
+    if (decoded.trim().startsWith("{")) {
+      const parsed = JSON.parse(decoded);
+      return parsed as FirebaseServiceAccount;
+    }
+  } catch {
+    // ignore
+  }
+
+  throw new Error(
+    `FIREBASE_SERVICE_ACCOUNT_KEY must be the full Firebase service account JSON (starts with '{' and ends with '}'). ` +
+      `Current value looks like: '${previewForError(raw)}…'`
+  );
+}
+
 async function initFirebaseAdmin() {
   const serviceAccountKey = Deno.env.get("FIREBASE_SERVICE_ACCOUNT_KEY");
   if (!serviceAccountKey) {
     throw new Error("FIREBASE_SERVICE_ACCOUNT_KEY not configured");
   }
-  
-  const serviceAccount = JSON.parse(serviceAccountKey);
-  
+
+  const serviceAccount = tryParseServiceAccount(serviceAccountKey);
+
+  if (!serviceAccount.client_email || !serviceAccount.private_key || !serviceAccount.project_id) {
+    throw new Error("FIREBASE_SERVICE_ACCOUNT_KEY JSON is missing required fields (client_email, private_key, project_id)");
+  }
+
   // Get Firebase access token
   const tokenUrl = `https://oauth2.googleapis.com/token`;
   const now = Math.floor(Date.now() / 1000);
-  
+
   const header = { alg: "RS256", typ: "JWT" };
   const payload = {
     iss: serviceAccount.client_email,
@@ -30,36 +81,50 @@ async function initFirebaseAdmin() {
 
   // Import crypto key and sign JWT
   const encoder = new TextEncoder();
-  const headerB64 = btoa(JSON.stringify(header)).replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
-  const payloadB64 = btoa(JSON.stringify(payload)).replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
-  
-  const privateKeyPem = serviceAccount.private_key;
-  const pemContents = privateKeyPem.replace(/-----BEGIN PRIVATE KEY-----/, '').replace(/-----END PRIVATE KEY-----/, '').replace(/\n/g, '');
-  const binaryKey = Uint8Array.from(atob(pemContents), c => c.charCodeAt(0));
-  
+  const headerB64 = btoa(JSON.stringify(header)).replace(/=/g, "").replace(/\+/g, "-").replace(/\//g, "_");
+  const payloadB64 = btoa(JSON.stringify(payload)).replace(/=/g, "").replace(/\+/g, "-").replace(/\//g, "_");
+
+  const privateKeyPem = String(serviceAccount.private_key).replace(/\\n/g, "\n");
+  const pemContents = privateKeyPem
+    .replace(/-----BEGIN PRIVATE KEY-----/, "")
+    .replace(/-----END PRIVATE KEY-----/, "")
+    .replace(/\n/g, "");
+  const binaryKey = Uint8Array.from(atob(pemContents), (c) => c.charCodeAt(0));
+
   const cryptoKey = await crypto.subtle.importKey(
     "pkcs8",
     binaryKey,
     { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
     false,
-    ["sign"]
+    ["sign"],
   );
-  
+
   const signatureInput = encoder.encode(`${headerB64}.${payloadB64}`);
   const signature = await crypto.subtle.sign("RSASSA-PKCS1-v1_5", cryptoKey, signatureInput);
-  const signatureB64 = btoa(String.fromCharCode(...new Uint8Array(signature))).replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
-  
+  const signatureB64 = btoa(String.fromCharCode(...new Uint8Array(signature)))
+    .replace(/=/g, "")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_");
+
   const jwt = `${headerB64}.${payloadB64}.${signatureB64}`;
-  
+
   // Exchange JWT for access token
   const tokenResponse = await fetch(tokenUrl, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: `grant_type=urn:ietf:params:oauth:grant-type:jwt-bearer&assertion=${jwt}`,
   });
-  
+
+  if (!tokenResponse.ok) {
+    const text = await tokenResponse.text();
+    throw new Error(`Failed to get Firebase access token: ${text}`);
+  }
+
   const tokenData = await tokenResponse.json();
-  
+  if (!tokenData?.access_token) {
+    throw new Error("Firebase token response missing access_token");
+  }
+
   return {
     accessToken: tokenData.access_token,
     projectId: serviceAccount.project_id,
